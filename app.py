@@ -15,15 +15,21 @@ templates = Jinja2Templates(directory='templates')
 
 class WebSocketEP(WebSocketEndpoint):
     encoding = "text"
-
+    registered_sockets = set()
     async def on_connect(self, websocket: WebSocket):
         await websocket.accept()
+        self.registered_sockets.add((websocket))
 
     async def on_receive(self, websocket: WebSocket, data: bytes):
-        await websocket.send_text(f"User: {data}")
+        await websocket.send_text(f"Echo: {data}")
 
     async def on_disconnect(self, websocket: WebSocket, close_code: int):
-        pass
+        self.registered_sockets.remove(websocket)
+
+    @classmethod
+    async def broadcast(self, data: bytes):
+        for socket in self.registered_sockets:
+            await socket.send_text(f"Broadcast: {data}")
 
 class ChatEP(HTTPEndpoint):
     async def get(self, request):
@@ -46,11 +52,21 @@ async def server_error(request: Request, exc: HTTPException):
     context = {"request": request}
     return templates.TemplateResponse(template, context, status_code=500)
 
+class ChatBroadcastEP(HTTPEndpoint):
+    async def post(self, request):
+        form = await request.form()
+        message = form['broadcast_form_message']
+        await WebSocketEP.broadcast(message)
+        template = "chat.html"
+        context = {"request": request}
+        return templates.TemplateResponse(template, context)
+
 routes = [
-    Route('/', homepage),
+    Route('/', homepage, name="homepage"),
     Mount('/static', app=StaticFiles(directory='statics'), name='static'),
     WebSocketRoute('/ws', WebSocketEP, name="ws"),
-    Route('/chat', ChatEP, name="chat")
+    Route('/chat', ChatEP, name="chat"),
+    Route('/chat/broadcast', ChatBroadcastEP, methods=['POST'], name="chat")
 ]
 
 exceptions = {

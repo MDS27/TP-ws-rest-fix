@@ -6,8 +6,14 @@
   <div class="jumbotron">
     <div class="container">
       <h1 class="display-3">WebSocket Chat</h1>
-      <form action="" onsubmit="sendMessage(event)">
-          <input type="text" id="messageText" autocomplete="off"/>
+      <form id="echo_form" action="" onsubmit="sendMessage(event)">
+          <label for="echo_form_message">Echo</label>
+          <input type="text" id="echo_messageText" autocomplete="off" value="Echo message"/>
+          <button>Send</button>
+      </form>
+      <form id="broadcast_form" method="post" action="/chat/broadcast" onsubmit="broadcastMessage(event)">
+          <label for="broadcast_form_message">Broadcast</label>
+          <input type="text" id="broadcast_messageText" name="broadcast_form_message"  autocomplete="off" value="Message for all clients"/>
           <button>Send</button>
       </form>
       <ul id='messages'></ul>
@@ -21,10 +27,20 @@
                 messages.appendChild(message)
             };
             function sendMessage(event) {
-                var input = document.getElementById("messageText")
+                event.preventDefault()
+                var input = document.getElementById("echo_messageText")
                 ws.send(input.value)
                 input.value = ''
+            };
+            function broadcastMessage(event) {
                 event.preventDefault()
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("broadcast_form"))
+                })
+                var input = document.getElementById("broadcast_messageText")
+                input.value = ''
+                return false
             }
       </script>
     </div>
