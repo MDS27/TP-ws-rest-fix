@@ -5,18 +5,12 @@
 
   <div class="jumbotron">
     <div class="container">
-      <h1 class="display-3">WebSocket Chat</h1>
+      <h1 class="display-3">WebSocket ChatBot</h1>
       <form id="echo_form" action="" onsubmit="sendMessage(event)">
-          <label for="echo_form_message">Echo</label>
-          <input type="text" id="echo_messageText" autocomplete="off" value="Echo message"/>
+          <input type="text" id="echo_messageText" autocomplete="off" value="/старт"/>
           <button>Send</button>
       </form>
-      <form id="broadcast_form" method="post" action="/chat/broadcast" onsubmit="broadcastMessage(event)">
-          <label for="broadcast_form_message">Broadcast</label>
-          <input type="text" id="broadcast_messageText" name="broadcast_form_message"  autocomplete="off" value="Message for all clients"/>
-          <button>Send</button>
-      </form>
-      <ul id='messages'></ul>
+      <ul id='messages' style="list-style-type: none"></ul>
       <script>
             var ws = new WebSocket("ws://localhost:8000/ws");
             ws.onmessage = function(event) {
@@ -24,24 +18,15 @@
                 var message = document.createElement('li')
                 var content = document.createTextNode(event.data)
                 message.appendChild(content)
-                messages.appendChild(message)
+                messages.insertBefore(message, messages.childNodes[0]);
             };
             function sendMessage(event) {
                 event.preventDefault()
                 var input = document.getElementById("echo_messageText")
-                ws.send(input.value)
+                if(input.value == '') {ws.send(' ');}
+                else {ws.send(input.value);}
                 input.value = ''
             };
-            function broadcastMessage(event) {
-                event.preventDefault()
-                fetch(event.target.action, {
-                    method:'POST',
-                    body: new FormData(document.getElementById("broadcast_form"))
-                })
-                var input = document.getElementById("broadcast_messageText")
-                input.value = ''
-                return false
-            }
       </script>
     </div>
   </div>

@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main role="main">
+
+  <div class="jumbotron">
+    <div class="container">
+      <h1 class="display-3">Fix</h1>
+      <div id="status">Статус подключения</div><br/>
+      <form id="name_form" action="" onsubmit="return false">
+          <label for="form_name">ClientID</label>
+          <input type="text" id="form_name" autocomplete="off" value="SENDER"/>
+          <button id="close_btn" class="py-button">Connect</button>
+            <br/>
+          <label for="form_account">Account</label>
+          <input type="text" id="form_account" style="width:100px;height:25px" autocomplete="off" value="123"/>
+          <label for="form_quoteid">QuoteID</label>
+          <input type="text" id="form_quoteid" style="width:100px;height:25px" autocomplete="off" value="12345"/>
+          <label for="form_symbol">Symbol</label>
+          <input type="text" id="form_symbol" style="width:100px;height:25px" autocomplete="off" value="AX"/>
+          <label for="form_offerpx">OfferPx</label>
+          <input type="text" id="form_offerpx" style="width:100px;height:25px" autocomplete="off" value="100"/>
+          <label for="form_offersize">OfferSize</label>
+          <input type="text" id="form_offersize" style="width:100px;height:25px" autocomplete="off" value="10"/>
+          <button id="send_quote_btn" class="py-button">Send Quote</button>
+                      <br/>
+          <label for="form_exectype">ExecType</label>
+          <input type="text" id="form_exectype" style="width:100px;height:25px" autocomplete="off" value="F"/>
+          <label for="form_ordstatus">OrdStatus</label>
+          <input type="text" id="form_ordstatus" style="width:100px;height:25px" autocomplete="off" value="2"/>
+          <label for="form_price">Price</label>
+          <input type="text" id="form_price" style="width:100px;height:25px" autocomplete="off" value="100"/>
+          <label for="form_avgpx">AvgPx</label>
+          <input type="text" id="form_avgpx" style="width:100px;height:25px" autocomplete="off" value="100"/>
+
+          <button id="send_report_btn" class="py-button">Send ExecutionReport</button>
+
+      </form>
+      <div id='messages'></div>
+    </div>
+  </div>
+    <py-config>
+        packages = ["simplefix"]
+        terminal = false
+    </py-config>
+    <py-script>
+import logging
+import simplefix
+from simplefix import FixMessage, FixParser
+import datetime
+from decimal import Decimal
+from uuid import uuid4
+from pyodide.ffi import create_proxy, to_js
+from js import document, WebSocket
+from enum import Enum
+from pyscript import Element, when
+from pyodide.ffi.wrappers import add_event_listener
+
+
+
+@when("click", "#send_quote_btn")
+def send_quote_btn(event):
+    client.onSendQuote(event)
+
+@when("click", "#send_report_btn")
+def send_report_btn(event):
+    client.onSendReport(event)
+
+class ConnectionState(Enum):
+    CONNECTING = 0
+    OPEN = 1
+    CLOSING = 2
+    CLOSED = 3
+
+class Client():
+    def __init__(self):
+        Element("status").write("Введите ID клиента и нажмите Connect")
+        add_event_listener(document.getElementById("close_btn"),"click" , self.onDisconnect)
+
+    def init_socket(self):
+        HOST = 'localhost'
+        PORT = '8000'
+        self.socket = WebSocket.new("ws://" + HOST + ":" + PORT + "/fix")
+        self.socket.binaryType = "arraybuffer"
+
+        proxy_onError = create_proxy(self.onError)
+        proxy_onConnect = create_proxy(self.onConnect)
+        proxy_onMessage = create_proxy(self.onMessage)
+        self.socket.addEventListener("error", proxy_onError)
+        self.socket.addEventListener("open", proxy_onConnect)
+        self.socket.addEventListener("message", proxy_onMessage)
+        Element("status").write(ConnectionState(self.socket.readyState))
+
+    def onSendQuote(self,event=None):
+        self.run("QUOTE")
+        if hasattr(self, 'socket'):
+            Element("status").write(ConnectionState(self.socket.readyState))
+            self.socket.send(to_js(self.encoded))
+            _p = FixParser()
+            _p.append_buffer(self.encoded)
+            _m = _p.get_message()
+            Element("messages").write("<--%s" % _m, append=True)
+
+
+    def onSendReport(self,event=None):
+        self.run("REPORT")
+        if hasattr(self, 'socket'):
+            Element("status").write(ConnectionState(self.socket.readyState))
+            self.socket.send(to_js(self.encoded))
+            _p = FixParser()
+            _p.append_buffer(self.encoded)
+            _m = _p.get_message()
+            Element("messages").write("<--%s" % _m, append=True)
+
+    def onError(self, event):
+        logging.error("Error in socket %s" % event)
+        Element("status").write(ConnectionState(self.socket.readyState))
+
+    def onConnect(self, event):
+        logging.info("Established connection to %s" % self.socket.url)
+        Element("status").write(ConnectionState(self.socket.readyState))
+        self.socket.send(to_js(self.encoded))
+        _p = FixParser()
+        _p.append_buffer(self.encoded)
+        _m = _p.get_message()
+        Element("messages").write("<--%s" % _m, append=True)
+
+    def onMessage(self, event):
+        logging.info("Received message: %s" % event.data.to_py().tobytes())
+        Element("status").write(ConnectionState(self.socket.readyState))
+        self.parser = FixParser()
+        _obj2str = event.data.to_py().tobytes()
+        self.parser.append_buffer(_obj2str)
+        self.msg = self.parser.get_message()
+        Element("messages").write("--> %s" % self.msg, append=True) # получено и раскодировано сообщение из simplefix
+
+    def onDisconnect(self, event=None):
+        if not  hasattr(self, 'socket'):
+            self.init_socket()
+            self.run("LOGON")
+            logging.info("%s has connected"  % self.socket.url)
+            Element("status").write(ConnectionState(self.socket.readyState))
+            Element("close_btn").write("Disconnect")
+        print(self.socket.readyState)
+        if  self.socket.readyState == 1:
+            logging.info("%s has disconnected"  % self.socket.url)
+            self.socket.close()
+            Element("status").write(ConnectionState(self.socket.readyState))
+            Element("close_btn").write("Connect")
+        elif self.socket.readyState == 3:
+            self.init_socket()
+            self.run("LOGON")
+            logging.info("%s has connected"  % self.socket.url)
+            Element("status").write(ConnectionState(self.socket.readyState))
+            Element("close_btn").write("Disconnect")
+        else:
+            Element("status").write("Waiting")
+
+    def run(self, cmd):
+        self.client_id = Element('form_name').value #"SENDER"
+        target_id = "TARGET"
+
+        send_time_str = datetime.datetime.utcnow().strftime('%Y%m%d-%H:%M:%S')
+
+        if cmd == "LOGON":
+            ### LOGON
+            self.next_seq_num = 1
+            values = {
+                simplefix.TAG_SENDING_TIME: send_time_str,
+                simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_LOGON,
+                simplefix.TAG_ENCRYPTMETHOD: simplefix.ENCRYPTMETHOD_NONE,
+                simplefix.TAG_HEARTBTINT: b'30',
+                simplefix.TAG_RESETSEQNUMFLAG: simplefix.RESETSEQNUMFLAG_YES,
+                **({}),
+            }
+
+        elif cmd == "QUOTE":
+            ### Order parameters
+            account = Element('form_account').value
+            quoteid = Element('form_quoteid').value
+            offerpx = Element('form_offerpx').value
+            offersize = Element('form_offersize').value
+            symbol = Element('form_symbol').value #55 Символьный идентификатор инструмента
+
+            QuoteReqID = '987' #131 назначается системой
+            QuoteType = '0' #537 
+
+            values = {
+                simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_QUOTE, #35=S
+                simplefix.TAG_SENDING_TIME: send_time_str, #52
+
+                simplefix.TAG_ACCOUNT: account,
+                simplefix.TAG_QUOTEID: quoteid,
+                simplefix.TAG_QUOTEREQID: QuoteReqID,
+                b'537': QuoteType,
+                simplefix.TAG_SYMBOL: symbol, #55
+                simplefix.TAG_ASKBX: offerpx,
+                b'135': offersize,
+                **({}),
+            }
+        elif cmd == "REPORT":
+            exectype = Element('form_exectype').value
+            ordstatus = Element('form_ordstatus').value
+            price = Element('form_price').value
+            avgpx = Element('form_avgpx').value
+            leavesqty = '0'
+
+            values = {
+                simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_EXECUTION_REPORT, #35=8
+                simplefix.TAG_SENDING_TIME: send_time_str, #52
+
+                simplefix.TAG_CLORDID: uuid4(), #11
+                simplefix.TAG_QUOTEREQID: self.msg.get(simplefix.TAG_QUOTEREQID), #131 из NewOrderSingle
+                simplefix.TAG_EXECID: self.msg.get(simplefix.TAG_EXECID), #17 из NewOrderSingle
+                simplefix.TAG_ORDERID: self.msg.get(simplefix.TAG_CLORDID), #37<--11 из NewOrderSingle
+                simplefix.TAG_SYMBOL: self.msg.get(simplefix.TAG_SYMBOL), #55 из NewOrderSingle
+                simplefix.TAG_EXECTYPE: exectype, #150 принять/отклонить F/8
+                simplefix.TAG_ORDSTATUS: ordstatus, #39 принять/отклонить 2/8
+                simplefix.TAG_SIDE: simplefix.SIDE_SELL, #54=Sell
+                simplefix.TAG_PRICE: price, #44
+                simplefix.TAG_AVGPX: avgpx, #6
+                simplefix.TAG_CUMQTY: self.msg.get(simplefix.TAG_ORDERQTY), #14<--38 из NewOrderSingle
+                simplefix.TAG_LEAVESQTY: leavesqty, #151
+                **({}),
+            }
+
+        else:
+            self.next_seq_num = 1
+            values = {
+                **({}),
+            }
+
+        msg = FixMessage()
+        msg.append_pair(simplefix.TAG_BEGINSTRING, 'FIX.4.4')
+        msg.append_pair(simplefix.TAG_SENDER_COMPID, self.client_id)
+        msg.append_pair(simplefix.TAG_TARGET_COMPID, target_id)
+        msg.append_pair(simplefix.TAG_MSGSEQNUM, self.next_seq_num)
+
+        for key, value in values.items():
+            if isinstance(value, datetime.datetime):
+                msg.append_utc_timestamp(key, value)
+            else:
+                msg.append_pair(key, value)
+
+        if cmd:
+            self.encoded = msg.encode()
+            print(self.encoded)
+            self.next_seq_num = self.next_seq_num + 1
+
+if __name__ == '__main__':
+    logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
+    client = Client()
+
+    </py-script>
+</main>
+<link rel="stylesheet" href="https://pyscript.net/latest/pyscript.css" />
+<script defer src="https://pyscript.net/latest/pyscript.js"></script>
+{% endblock %}
