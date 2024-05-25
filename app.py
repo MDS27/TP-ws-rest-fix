@@ -7,19 +7,31 @@ from starlette.templating import Jinja2Templates #Создание шаблон�
 from starlette.staticfiles import StaticFiles #Готовые стили оформления
 from starlette.websockets import WebSocket
 from starlette.endpoints import HTTPEndpoint, WebSocketEndpoint
-from fix_server import ServerFixEP, FixEP
+from fix_server import ServerFixEP,FixEP
 import random
 import towns
+
+from starlette.middleware import Middleware
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import RedirectResponse
+from starlette.responses import Response
+
+from sqlalchemy.orm.exc import NoResultFound
+from models.dataBase import createDB, sessionDB
+from models.userModel import Users
+
+createDB()
 
 # pip install 'uvicorn[standard]'
 
 templates = Jinja2Templates(directory='templates')
-
 class WebSocketEP(WebSocketEndpoint):
     encoding = "text"
+    registered_sockets = set()
 
     async def on_connect(self, websocket: WebSocket):
         await websocket.accept()
+        self.registered_sockets.add((websocket))
         self.gameState = 'None'
         self.townO = towns.town()
         self.botTown = 'None'
@@ -70,6 +82,9 @@ class WebSocketEP(WebSocketEndpoint):
                 await websocket.send_text(f"Bot: {self.oir(data)}")
             else:
                 pass
+
+    async def on_disconnect(self, websocket: WebSocket, close_code: int):
+        self.registered_sockets.remove(websocket)
 
     def oir(self, data):
         if data in ['Орел', 'орел', 'Орёл', 'орёл']:
@@ -146,16 +161,136 @@ class WebSocketEP(WebSocketEndpoint):
             return res
         return res
 
+    @classmethod
+    async def broadcast(self, data: bytes):
+        for socket in self.registered_sockets:
+            await socket.send_text(f"{data}")
 
 class ChatEP(HTTPEndpoint):
     async def get(self, request):
+        st = request.session.get('auth') #проверка аутентификации
+        if st != 'auth':
+            return RedirectResponse(url="/login")
+        name = request.session.get('name')
         template = "chat.html"
+        context = {"request": request, "Username": name}
+        return templates.TemplateResponse(template, context)
+
+    async def post(self, request):
+        form = await request.form()
+        message = form['broadcast_form_message']
+        await WebSocketEP.broadcast(message)
+        return Response()
+
+class ChatBotEP(HTTPEndpoint):
+    async def get(self, request):
+        st = request.session.get('auth') #проверка аутентификации
+        if st != 'auth':
+            return RedirectResponse(url="/login")
+        name = request.session.get('name')
+        template = "chatBot.html"
+        context = {"request": request, "Username": name}
+        return templates.TemplateResponse(template, context)
+
+class LoginEP(HTTPEndpoint):
+    async def get(self, request):
+        st = request.session.get('auth') #проверка аутентификации
+        if st == 'auth':
+            return RedirectResponse(url="/account")
+        template = "login.html"
         context = {"request": request}
         return templates.TemplateResponse(template, context)
 
+    async def post(self, request):
+        form = await request.form()
+        name = form["login_Text"]
+        password = form["password_Text"]
+        loginSession = sessionDB()
+        # проверка
+        try:
+            testuser = loginSession.query(Users).filter_by(username=name,password=password).one()
+        except NoResultFound:
+            # ошибка входа
+            request.session.clear()
+            return Response()
+        request.session.update({'name': name})
+        request.session.update({'auth': 'auth'})
+        return Response()
+
+class Sign_inEP(HTTPEndpoint):
+    async def get(self, request):
+        st = request.session.get('auth') #проверка аутентификации
+        if st == 'auth':
+            return RedirectResponse(url="/account")
+        template = "sign_in.html"
+        context = {"request": request}
+        return templates.TemplateResponse(template, context)
+
+    async def post(self, request):
+        form = await request.form()
+        name = form["sign_in_Text"]
+        password = form["password_Text"]
+
+        # регистрация
+        signinSession = sessionDB()
+        try:
+            testuser = signinSession.query(Users).filter_by(username=name).one()
+            print('такой пользователь уже есть')
+            return Response()
+        except NoResultFound:
+            user = Users(username=name, password=password, description="Add description")
+            signinSession.add(user)
+            signinSession.commit()
+            request.session.update({'name': name})
+            request.session.update({'auth':'auth'})
+            print(request.session.get('name'))
+            return Response()
+
+class AccountEP(HTTPEndpoint):
+    async def get(self, request):
+        st = request.session.get('auth')
+        if st != 'auth':
+            return RedirectResponse(url="/login")
+        name = request.session.get('name')
+        accountSession = sessionDB()
+        accountData = accountSession.query(Users).filter_by(username=name).one()
+        description = accountData.description
+        template = "account.html"
+        context = {"request": request, "Username": name, "Description" : description}
+        return templates.TemplateResponse(template, context)
+
+    async def post(self, request):
+        try:
+            form = await request.form()
+            name = form["description_User"]
+            description = form["description_Text"]
+            descriptionSession = sessionDB()
+            try:
+                descriptionUser = descriptionSession.query(Users).filter_by(username=name).one()
+                descriptionUser.description = description
+                descriptionSession.add(descriptionUser)
+                descriptionSession.commit()
+                return Response()
+            except NoResultFound:
+                return Response()
+
+        except Exception:
+            try:
+                form = await request.form()
+                name = form["delete_Text"]
+                password = form["password_Text"]
+                deleteSession = sessionDB()
+            except Exception:
+                print('выход')
+                request.session.clear()
+            return Response()
+
+
+
 async def homepage(request):
+    name = request.session.get('name') or "Account"
     template = "index.html"
-    context = {"request": request}
+    context = {"request": request,"Username": name}
     return templates.TemplateResponse(template, context)
 
 async def not_found(request: Request, exc: HTTPException):
@@ -168,14 +303,17 @@ async def server_error(request: Request, exc: HTTPException):
     context = {"request": request}
     return templates.TemplateResponse(template, context, status_code=500)
 
-
 routes = [
     Route('/', homepage, name="homepage"),
     Mount('/static', app=StaticFiles(directory="statics"), name="static"),
     WebSocketRoute('/ws', WebSocketEP, name="ws"),
-    Route('/chat', ChatEP, name="chat"),
+    Route('/chat', ChatEP, methods=['GET','POST'], name="chat"),
+    Route('/chatBot', ChatBotEP, name="chatBot"),
+    Route('/login', LoginEP,methods=['GET','POST'], name="login"),
+    Route('/sign_in', Sign_inEP,methods=['GET','POST'], name="sign_in"),
+    Route('/account', AccountEP, methods=['GET','POST'], name="account"),
     WebSocketRoute('/fix',ServerFixEP,name="fix"),
-    Route('/fixPage',FixEP, name="fixPage")
+    Route('/fixPage',FixEP, name="fixPage"),
 ]
 
 exceptions = {
@@ -183,7 +321,9 @@ exceptions = {
     500: server_error
 }
 
-app = Starlette(debug=True, routes=routes, exception_handlers = exceptions)
+middleware = [Middleware(SessionMiddleware,secret_key="HfkjbUE6d7UIE9cV69cUb9BIC8")]
+app = Starlette(debug=True, routes=routes, exception_handlers = exceptions, middleware=middleware)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host='0.0.0.0', port=8000)

@@ -5,10 +5,11 @@ from starlette.templating import Jinja2Templates #Создание шаблон�
 import simplefix
 from simplefix import FixMessage, FixParser
 import datetime
-
+from decimal import Decimal
 from uuid import uuid4
 import re
 
+import random
 
 templates = Jinja2Templates(directory = 'templates')
 class ServerFixEP(WebSocketEndpoint):
@@ -21,6 +22,8 @@ class ServerFixEP(WebSocketEndpoint):
         print(data)
         if re.search('150=F', data.decode()) and re.search('39=2', data.decode()):
             await websocket.send_bytes(self.run(data, 1))
+    async def on_disconnect(self, websocket: WebSocket, close_code: int):
+        pass
 
     def run(self, data, rec = None):
         self.parser = FixParser()
@@ -41,8 +44,30 @@ class ServerFixEP(WebSocketEndpoint):
                 simplefix.TAG_RESETSEQNUMFLAG: simplefix.RESETSEQNUMFLAG_YES,
                 **({}),
             }
+        elif self.msg.message_type == b'D':
+            # SELL
+            self.client_id = self.msg.get(simplefix.TAG_TARGET_COMPID)
+            self.target_id = self.msg.get(simplefix.TAG_SENDER_COMPID)
+            values = {
+                simplefix.TAG_SENDING_TIME: send_time_str,   ### flag 1
+
+                simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_EXECUTION_REPORT,
+                simplefix.TAG_HANDLINST: simplefix.HANDLINST_AUTO_PRIVATE,
+                simplefix.TAG_CLORDID: uuid4(),
+                simplefix.TAG_SYMBOL: self.msg.get(simplefix.TAG_SYMBOL),
+                simplefix.TAG_SIDE: self.msg.get(simplefix.TAG_SIDE),
+                simplefix.TAG_PRICE: self.msg.get(simplefix.TAG_PRICE),
+                simplefix.TAG_ORDERQTY: self.msg.get(simplefix.TAG_ORDERQTY),
+                simplefix.TAG_ORDTYPE: simplefix.ORDTYPE_LIMIT,
+                simplefix.TAG_ORDSTATUS: simplefix.ORDSTATUS_FILLED,
+                simplefix.TAG_EXECTYPE: simplefix.EXECTYPE_TRADE,
+                simplefix.TAG_TIMEINFORCE: simplefix.TIMEINFORCE_GOOD_TILL_CANCEL,
+                **({}),
+            }
         elif self.msg.message_type == b'S':
-            self.account = self.msg.get(simplefix.TAG_ACCOUNT)
+            self.account = self.msg.get(simplefix.TAG_ACCOUNT) #запоминаем аккаунт для response
+            xexcid = '654' #17 Идентификатор квазисделки
+            symbol = "BTC/USDT" #55 Символьный идентификатор инструмента
 
             self.client_id = self.msg.get(simplefix.TAG_TARGET_COMPID)
             self.target_id = self.msg.get(simplefix.TAG_SENDER_COMPID)
@@ -54,8 +79,8 @@ class ServerFixEP(WebSocketEndpoint):
                 simplefix.TAG_CLORDID: uuid4(), #11 задается системой 
                 simplefix.TAG_QUOTEREQID: self.msg.get(simplefix.TAG_QUOTEREQID), #131 из Quote
                 simplefix.TAG_QUOTEID: self.msg.get(simplefix.TAG_QUOTEID), #117 из Quote
-                simplefix.TAG_EXECID: uuid4(), #17 Идентификатор квазисделки
-                simplefix.TAG_SYMBOL: self.msg.get(simplefix.TAG_SYMBOL), #55 из Quote,
+                simplefix.TAG_EXECID: xexcid,
+                simplefix.TAG_SYMBOL: symbol,
                 simplefix.TAG_PRICE: self.msg.get(simplefix.TAG_ASKBX), # 44<--133 из Quote
                 simplefix.TAG_ORDTYPE: simplefix.ORDTYPE_LIMIT,
                 simplefix.TAG_ORDERQTY: self.msg.get(b'135'), #38<--135  из Quote
@@ -64,19 +89,21 @@ class ServerFixEP(WebSocketEndpoint):
             }
 
         elif rec == 1:
+
+            symbol = "BTC/USDT"  # 55 Символьный идентификатор инструмента
             QuoteRespType = '1'
 
             self.client_id = self.msg.get(simplefix.TAG_TARGET_COMPID)
             self.target_id = self.msg.get(simplefix.TAG_SENDER_COMPID)
 
             values = {
-                simplefix.TAG_SENDING_TIME: send_time_str,
+                simplefix.TAG_SENDING_TIME: send_time_str,  ### flag 1
                 simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_QUOTE_RESPONSE,
 
                 simplefix.TAG_QUOTERESPID: self.QuoteRespID, #693
                 simplefix.TAG_QUOTEREQID: self.msg.get(simplefix.TAG_QUOTEREQID), #131 из ExecutionRepor
                 b'694': QuoteRespType, #694
-                simplefix.TAG_SYMBOL: self.msg.get(simplefix.TAG_SYMBOL),# 55 Символьный идентификатор инструмента
+                simplefix.TAG_SYMBOL: symbol,
                 **({}),
             }
 
@@ -118,6 +145,7 @@ class ServerFixEP(WebSocketEndpoint):
         msg.append_pair(simplefix.TAG_SENDER_COMPID, self.client_id)
         msg.append_pair(simplefix.TAG_TARGET_COMPID, self.target_id)
         msg.append_pair(simplefix.TAG_MSGSEQNUM, self.next_seq_num)
+        # msg.append_utc_timestamp(simplefix.TAG_SENDING_TIME) ### flag 2
 
         for key, value in values.items():
             if isinstance(value, datetime.datetime):

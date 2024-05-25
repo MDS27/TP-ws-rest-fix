@@ -16,8 +16,6 @@
           <input type="text" id="form_account" style="width:100px;height:25px" autocomplete="off" value="123"/>
           <label for="form_quoteid">QuoteID</label>
           <input type="text" id="form_quoteid" style="width:100px;height:25px" autocomplete="off" value="12345"/>
-          <label for="form_symbol">Symbol</label>
-          <input type="text" id="form_symbol" style="width:100px;height:25px" autocomplete="off" value="AX"/>
           <label for="form_offerpx">OfferPx</label>
           <input type="text" id="form_offerpx" style="width:100px;height:25px" autocomplete="off" value="100"/>
           <label for="form_offersize">OfferSize</label>
@@ -33,7 +31,7 @@
           <label for="form_avgpx">AvgPx</label>
           <input type="text" id="form_avgpx" style="width:100px;height:25px" autocomplete="off" value="100"/>
 
-          <button id="send_report_btn" class="py-button">Send ExecutionReport</button>
+          <button id="send_report_btn" class="py-button">Send Quote</button>
 
       </form>
       <div id='messages'></div>
@@ -59,11 +57,11 @@ from pyodide.ffi.wrappers import add_event_listener
 
 
 @when("click", "#send_quote_btn")
-def send_quote_btn(event):
+def send_quote_btn(event): # вариант через декоратор when вызов в классе
     client.onSendQuote(event)
 
 @when("click", "#send_report_btn")
-def send_report_btn(event):
+def send_report_btn(event): # вариант через декоратор when вызов в классе
     client.onSendReport(event)
 
 class ConnectionState(Enum):
@@ -74,8 +72,9 @@ class ConnectionState(Enum):
 
 class Client():
     def __init__(self):
+        #self.init_socket()
         Element("status").write("Введите ID клиента и нажмите Connect")
-        add_event_listener(document.getElementById("close_btn"),"click" , self.onDisconnect)
+        add_event_listener(document.getElementById("close_btn"),"click" , self.onDisconnect) # вариант через Add_event_listene+r
 
     def init_socket(self):
         HOST = 'localhost'
@@ -89,6 +88,7 @@ class Client():
         self.socket.addEventListener("error", proxy_onError)
         self.socket.addEventListener("open", proxy_onConnect)
         self.socket.addEventListener("message", proxy_onMessage)
+        #Element("status").write((lambda x: ConnectionState(x.readyState) if(x) else "Not connected")(self.socket))
         Element("status").write(ConnectionState(self.socket.readyState))
 
     def onSendQuote(self,event=None):
@@ -180,10 +180,9 @@ class Client():
             quoteid = Element('form_quoteid').value
             offerpx = Element('form_offerpx').value
             offersize = Element('form_offersize').value
-            symbol = Element('form_symbol').value #55 Символьный идентификатор инструмента
 
             QuoteReqID = '987' #131 назначается системой
-            QuoteType = '0' #537 
+            QuoteType = '0' #537 отсутствует а constants.py
 
             values = {
                 simplefix.TAG_MSGTYPE: simplefix.MSGTYPE_QUOTE, #35=S
@@ -193,7 +192,6 @@ class Client():
                 simplefix.TAG_QUOTEID: quoteid,
                 simplefix.TAG_QUOTEREQID: QuoteReqID,
                 b'537': QuoteType,
-                simplefix.TAG_SYMBOL: symbol, #55
                 simplefix.TAG_ASKBX: offerpx,
                 b'135': offersize,
                 **({}),
@@ -235,6 +233,8 @@ class Client():
         msg.append_pair(simplefix.TAG_SENDER_COMPID, self.client_id)
         msg.append_pair(simplefix.TAG_TARGET_COMPID, target_id)
         msg.append_pair(simplefix.TAG_MSGSEQNUM, self.next_seq_num)
+        # msg.append_utc_timestamp(simplefix.TAG_SENDING_TIME) ### flag 2
+
 
         for key, value in values.items():
             if isinstance(value, datetime.datetime):
@@ -242,14 +242,23 @@ class Client():
             else:
                 msg.append_pair(key, value)
 
+        # if not msg.get(simplefix.TAG_SENDING_TIME): ### flag 3
+        #     msg.append_utc_timestamp(simplefix.TAG_SENDING_TIME) ### flag 3
+
         if cmd:
             self.encoded = msg.encode()
             print(self.encoded)
             self.next_seq_num = self.next_seq_num + 1
 
+
+def main():
+    client.run(cmd=None)
+    logging.info("Processing...")
+
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
     client = Client()
+    main()
 
     </py-script>
 </main>

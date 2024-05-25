@@ -5,9 +5,10 @@
 
   <div class="jumbotron">
     <div class="container">
-      <h1 class="display-3">WebSocket ChatBot</h1>
-      <form id="echo_form" action="" onsubmit="sendMessage(event)">
-          <input type="text" id="echo_messageText" autocomplete="off" value="/старт"/>
+      <h1 class="display-3">WebSocket Chat</h1>
+        <p class="h5" id="Username">{{Username}}</p>
+      <form id="broadcast_form" method="post" action="/chat" onsubmit="broadcastMessage(event)">
+          <input type="text" id="broadcast_messageText" name="broadcast_form_message"  autocomplete="off" value="Message for all clients"/>
           <button>Send</button>
       </form>
       <ul id='messages' style="list-style-type: none"></ul>
@@ -20,13 +21,19 @@
                 message.appendChild(content)
                 messages.insertBefore(message, messages.childNodes[0]);
             };
-            function sendMessage(event) {
+            function broadcastMessage(event) {
+                var username = document.getElementById('Username')
+                var mes = document.getElementById("broadcast_messageText")
+                mes.value = username.textContent +': '+ mes.value
                 event.preventDefault()
-                var input = document.getElementById("echo_messageText")
-                if(input.value == '') {ws.send(' ');}
-                else {ws.send(input.value);}
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("broadcast_form"))
+                })
+                var input = document.getElementById("broadcast_messageText")
                 input.value = ''
-            };
+                return false
+            }
       </script>
     </div>
   </div>

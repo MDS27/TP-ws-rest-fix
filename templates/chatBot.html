@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main role="main">
+
+  <div class="jumbotron">
+    <div class="container">
+      <h1 class="display-3">WebSocket ChatBot</h1>
+      <form id="echo_form" action="" onsubmit="sendMessage(event)">
+          <input type="text" id="echo_messageText" autocomplete="off" value="/старт"/>
+          <button>Send</button>
+      </form>
+      <ul id='messages' style="list-style-type: none"></ul>
+      <script>
+            var ws = new WebSocket("ws://localhost:8000/ws");
+
+            ws.onmessage = function(event) {
+                var messages = document.getElementById('messages')
+                var message = document.createElement('li')
+                var content = document.createTextNode(event.data)
+                message.appendChild(content)
+                messages.insertBefore(message, messages.childNodes[0]);
+            };
+            function sendMessage(event) {
+                event.preventDefault()
+                var input = document.getElementById("echo_messageText")
+                if(input.value == '') {ws.send(' ');}
+                else {ws.send(input.value);}
+                input.value = ''
+            };
+      </script>
+    </div>
+  </div>
+
+</main>
+{% endblock %}

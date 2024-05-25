@@ -1,0 +1,9 @@
++user: Quote /наверное надо создавать обект еще не написанного класса и добавлять его в массив
++birga: NewOrderSingle /D
+user: ExecutionReport
+if 150=8 /отклонено
+	ExecutionReport /ExecType=8 и OrdStatus=8
+if 150=F /выполнено
+	ExecutionReport  (Сделка  совершена)  и  сообщение QuoteResponse с QuoteRespType=1 (Hit/Lift)
+else 
+	Error /написать одно сообщение для всех ошибок

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main role="main">
+
+  <div class="jumbotron">
+    <div class="container">
+      <h1 class="display-3">Account</h1>
+        <p class="h5" id="Username">Hello {{Username}}</p>
+      <form name="exit_form" id="exitForm" method="post" action="/account" onsubmit="exit(event)">
+          <label for="exit_button">Log out of your account</label>
+          <button id="exit_button">Exit</button>
+      </form>
+      <form id="delete_form" method="post" action="/account" onsubmit="deleteAccount(event)">
+          <input type="hidden" id="deleteText" name="delete_Text" autocomplete="off" value = {{Username}} />
+          <input type="text" id="passwordText" name="password_Text" autocomplete="off" value="password"/>
+          <label for="delete_button">Delete an account</label>
+          <button id="delete_button">Delete</button>
+      </form>
+      <form id="description_form" method="post" action="/account" onsubmit="description(event)">
+          <input type="hidden" id="descriptionUser" name="description_User" autocomplete="off" value = {{Username}} />
+          <textarea rows="5" cols="50" name="description_Text">{{Description}}</textarea>
+          <label for="description_button">Сhange the description</label>
+          <button id="description_button">Сhange</button>
+      </form>
+      <p>Please refresh the page after changing the description.</p>
+      <script>
+            function exit(event) {
+                event.preventDefault()
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("exitForm"))
+                })
+                window.location.reload(true);
+                return false
+            };
+            function deleteAccount(event) {
+                event.preventDefault()
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("delete_form"))
+                })
+                window.location.reload(true);
+                return false
+            };
+            function description(event) {
+                event.preventDefault()
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("description_form"))
+                })
+                window.location.reload(true);
+                return false
+            }
+      </script>
+    </div>
+  </div>
+
+</main>
+{% endblock %}

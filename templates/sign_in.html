@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<main role="main">
+
+  <div class="jumbotron">
+    <div class="container">
+      <h1 class="display-3">Sign-in</h1>
+      <form id="sign_in_form" method="post" action="/sign_in" onsubmit="sign_inMessage(event)">
+          <input type="text" id="sign_inText" name="sign_in_Text" autocomplete="off" value="Name"/>
+          <input type="text" id="passwordText" name="password_Text" autocomplete="off" value="password"/>
+          <button>sign-in</button>
+      </form>
+        <p>Please refresh the page after registration.</p>
+      <script>
+            function sign_inMessage(event) {
+                event.preventDefault()
+                fetch(event.target.action, {
+                    method:'POST',
+                    body: new FormData(document.getElementById("sign_in_form"))
+                })
+                var us = document.getElementById("sign_inText")
+                var pas = document.getElementById("passwordText")
+                us.value = 'Name'
+                pas.value = 'password'
+                window.location.reload(true);
+                window.location.reload(true);
+                return false
+            }
+      </script>
+    </div>
+  </div>
+
+</main>
+{% endblock %}
